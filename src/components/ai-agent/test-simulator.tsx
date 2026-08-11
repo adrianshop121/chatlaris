@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Avatar } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { AIAgent, AIBusinessKnowledge, AIFAQ, AIRule, AIOperatingHours, AISettings, AIKnowledgeDocument } from '@/types/database.types'
+import { FullProductContext } from '@/lib/ai/product-context'
 import {
   MessageSquare,
   Send,
@@ -41,6 +42,7 @@ interface TestSimulatorProps {
   operatingHours: AIOperatingHours[]
   settings: AISettings | null
   documents: AIKnowledgeDocument[]
+  products?: FullProductContext[]
   completedTestCount: number
   setCompletedTestCount: React.Dispatch<React.SetStateAction<number>>
   onOpenDeployModal: () => void
@@ -55,6 +57,7 @@ export function TestSimulator({
   operatingHours,
   settings,
   documents,
+  products = [],
   completedTestCount,
   setCompletedTestCount,
   onOpenDeployModal,
@@ -75,12 +78,12 @@ export function TestSimulator({
   const chatContainerRef = useRef<HTMLDivElement>(null)
 
   const quickPrompts = [
+    'Ada kaos oversize?',
+    'Berapa harga Dress Floral?',
+    'Ada produk apa aja?',
     'Bagaimana cara order?',
     'Pengirimannya pakai apa?',
     'Bisa bayar pakai GoPay?',
-    'Apakah bisa bayar pakai OVO?',
-    'Halo',
-    'Kasih semua informasi toko kamu',
   ]
 
   useEffect(() => {
@@ -118,6 +121,7 @@ export function TestSimulator({
           operatingHours,
           settings,
           documents,
+          products,
         }),
       })
 
