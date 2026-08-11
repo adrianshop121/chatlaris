@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Product, ProductImage, ProductVariant, Business } from '@/types/database.types'
+import { fetchProductBySlug } from '@/lib/supabase/products-db'
 import {
   MessageSquare,
   Share2,
@@ -38,76 +39,58 @@ export default function PublicProductPage() {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && slug) {
-      const savedProducts = localStorage.getItem('chatlaris_products')
-      const savedImages = localStorage.getItem('chatlaris_product_images')
-      const savedVariants = localStorage.getItem('chatlaris_product_variants')
-      const savedBiz = localStorage.getItem('chatlaris_business')
+    async function loadPublicProduct() {
+      if (slug) {
+        let found = await fetchProductBySlug(slug)
 
-      let foundProduct: Product | null = null
-
-      if (savedProducts) {
-        try {
-          const list: Product[] = JSON.parse(savedProducts)
-          foundProduct = list.find((p) => p.slug === slug || p.slug.toLowerCase() === slug.toLowerCase()) || null
-        } catch (e) {
-          console.warn('Error loading public product:', e)
-        }
-      }
-
-      // Demo fallback if product matches demo slug
-      if (!foundProduct && (slug === 'dress-floral-premium' || slug.includes('dress'))) {
-        foundProduct = {
-          id: 'prod_demo_1',
-          business_id: 'default',
-          name: 'Dress Floral Premium',
-          slug: 'dress-floral-premium',
-          description:
-            'Dress floral cantik dengan bahan katun rayon premium adem, jahitan rapi, dan busui friendly. Cocok untuk acara santai maupun semi formal.',
-          normal_price: 185000,
-          discount_price: 150000,
-          stock: 8,
-          unit: 'pcs',
-          category: 'Fashion',
-          weight_grams: 500,
-          status: 'active',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }
-      }
-
-      if (foundProduct) {
-        setProduct(foundProduct)
-
-        if (savedImages) {
-          try {
-            const imagesMap = JSON.parse(savedImages)
-            if (imagesMap[foundProduct.id]) setImages(imagesMap[foundProduct.id])
-          } catch (e) {}
+        // Demo fallback if product matches demo slug
+        if (!found && (slug === 'dress-floral-premium' || slug.includes('dress'))) {
+          found = {
+            id: 'prod_demo_1',
+            business_id: 'default',
+            name: 'Dress Floral Premium',
+            slug: 'dress-floral-premium',
+            description:
+              'Dress floral cantik dengan bahan katun rayon premium adem, jahitan rapi, dan busui friendly. Cocok untuk acara santai maupun semi formal.',
+            normal_price: 185000,
+            discount_price: 150000,
+            stock: 8,
+            unit: 'pcs',
+            category: 'Fashion',
+            weight_grams: 500,
+            status: 'active',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            images: [],
+            variants: [
+              { id: '1', product_id: 'prod_demo_1', business_id: 'default', name: 'Ukuran S / Merah', stock: 3, created_at: '', updated_at: '', sku: null, price_override: null },
+              { id: '2', product_id: 'prod_demo_1', business_id: 'default', name: 'Ukuran M / Biru', stock: 5, created_at: '', updated_at: '', sku: null, price_override: null },
+            ],
+          }
         }
 
-        if (savedVariants) {
-          try {
-            const variantsMap = JSON.parse(savedVariants)
-            if (variantsMap[foundProduct.id]) {
-              setVariants(variantsMap[foundProduct.id])
-              if (variantsMap[foundProduct.id].length > 0) {
-                setSelectedVariant(variantsMap[foundProduct.id][0])
-              }
-            }
-          } catch (e) {}
+        if (found) {
+          setProduct(found)
+          setImages(found.images || [])
+          setVariants(found.variants || [])
+          if (found.variants && found.variants.length > 0) {
+            setSelectedVariant(found.variants[0])
+          }
         }
-      }
 
-      if (savedBiz) {
-        try {
-          const biz = JSON.parse(savedBiz)
-          setBusinessInfo(biz)
-        } catch (e) {}
-      }
+        if (typeof window !== 'undefined') {
+          const savedBiz = localStorage.getItem('chatlaris_business')
+          if (savedBiz) {
+            try {
+              setBusinessInfo(JSON.parse(savedBiz))
+            } catch (e) {}
+          }
+        }
 
-      setIsLoading(false)
+        setIsLoading(false)
+      }
     }
+    loadPublicProduct()
   }, [slug])
 
   if (isLoading) {
