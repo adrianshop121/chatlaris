@@ -12,6 +12,7 @@ import { ProductCard } from '@/components/products/product-card'
 import { WhatsAppMessageModal } from '@/components/products/whatsapp-message-modal'
 import { DeleteModal } from '@/components/products/delete-modal'
 import { DuplicateModal } from '@/components/products/duplicate-modal'
+import { fetchBusinessProducts, deleteProductInDb, createProductInDb, FullProduct } from '@/lib/supabase/products-db'
 import { Product, ProductImage, ProductVariant } from '@/types/database.types'
 import {
   Plus,
@@ -29,9 +30,7 @@ export default function ProductsPage() {
   const router = useRouter()
   const { business, subscription } = useAuth()
 
-  const [products, setProducts] = useState<Product[]>([])
-  const [images, setImages] = useState<Record<string, ProductImage[]>>({})
-  const [variants, setVariants] = useState<Record<string, ProductVariant[]>>({})
+  const [products, setProducts] = useState<FullProduct[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
   // Filters & Sorting State
@@ -43,27 +42,19 @@ export default function ProductsPage() {
   // Modals State
   const [waModalProduct, setWaModalProduct] = useState<Product | null>(null)
   const [deleteTargetProduct, setDeleteTargetProduct] = useState<Product | null>(null)
-  const [duplicateTargetProduct, setDuplicateTargetProduct] = useState<Product | null>(null)
+  const [duplicateTargetProduct, setDuplicateTargetProduct] = useState<FullProduct | null>(null)
   const [upgradeModalOpen, setUpgradeModalOpen] = useState(false)
 
-  // Load Products from Local Storage / Supabase Context
+  // Load Products from Supabase DB / Storage Helper
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const savedProducts = localStorage.getItem('chatlaris_products')
-      const savedImages = localStorage.getItem('chatlaris_product_images')
-      const savedVariants = localStorage.getItem('chatlaris_product_variants')
+    async function loadProducts() {
+      setIsLoading(true)
+      const businessId = business?.id || 'default'
+      const list = await fetchBusinessProducts(businessId)
 
-      if (savedProducts) {
-        try {
-          setProducts(JSON.parse(savedProducts))
-        } catch (e) {
-          console.warn('Error loading saved products:', e)
-        }
-      } else {
-        // Initial Demo Seed Product
-        const demoProduct: Product = {
-          id: 'prod_demo_1',
-          business_id: business?.id || 'default',
+      // Seed default demo product if list is completely empty
+      if (list.length === 0) {
+        const demoProduct: Partial<Product> = {
           name: 'Dress Floral Premium',
           slug: 'dress-floral-premium',
           description: 'Dress floral cantik dengan bahan katun rayon premium adem, jahitan rapi, dan busui friendly.',
@@ -74,31 +65,25 @@ export default function ProductsPage() {
           category: 'Fashion',
           weight_grams: 500,
           status: 'active',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
         }
-        setProducts([demoProduct])
-        localStorage.setItem('chatlaris_products', JSON.stringify([demoProduct]))
+        const createdDemo = await createProductInDb(
+          businessId,
+          demoProduct,
+          [],
+          [
+            { name: 'Ukuran S / Merah', stock: 3 },
+            { name: 'Ukuran M / Biru', stock: 5 },
+          ],
+          ['#best-seller', '#promo']
+        )
+        setProducts([createdDemo])
+      } else {
+        setProducts(list)
       }
-
-      if (savedImages) {
-        try {
-          setImages(JSON.parse(savedImages))
-        } catch (e) {
-          console.warn('Error loading product images:', e)
-        }
-      }
-
-      if (savedVariants) {
-        try {
-          setVariants(JSON.parse(savedVariants))
-        } catch (e) {
-          console.warn('Error loading product variants:', e)
-        }
-      }
-
       setIsLoading(false)
     }
+
+    loadProducts()
   }, [business?.id])
 
   const userPlan = subscription?.plan || 'free'
@@ -114,50 +99,62 @@ export default function ProductsPage() {
   }
 
   // Handle Product Deletion
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (!deleteTargetProduct) return
-    const updated = products.filter((p) => p.id !== deleteTargetProduct.id)
-    setProducts(updated)
-
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('chatlaris_products', JSON.stringify(updated))
-    }
-
+    const businessId = business?.id || 'default'
+    await deleteProductInDb(deleteTargetProduct.id, businessId)
+    setProducts((prev) => prev.filter((p) => p.id !== deleteTargetProduct.id))
     setDeleteTargetProduct(null)
   }
 
   // Handle Product Duplication
-  const handleConfirmDuplicate = () => {
+  const handleConfirmDuplicate = async () => {
     if (!duplicateTargetProduct) return
+    const businessId = business?.id || 'default'
 
     const newSlug = `${duplicateTargetProduct.slug}-copy-${Math.floor(Math.random() * 1000)}`
-    const duplicated: Product = {
-      ...duplicateTargetProduct,
-      id: 'prod_' + Math.random().toString(36).substring(2, 9),
-      name: `${duplicateTargetProduct.name} Copy`,
-      slug: newSlug,
-      status: 'draft',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }
+    const rawImages = (duplicateTargetProduct.images || []).map((img, i) => ({
+      storage_path: img.storage_path,
+      file_name: img.file_name,
+      sort_order: i,
+    }))
 
-    const updated = [duplicated, ...products]
-    setProducts(updated)
+    const duplicated = await createProductInDb(
+      businessId,
+      {
+        ...duplicateTargetProduct,
+        name: `${duplicateTargetProduct.name} Copy`,
+        slug: newSlug,
+        status: 'draft',
+      },
+      rawImages,
+      duplicateTargetProduct.variants || [],
+      (duplicateTargetProduct.tags || []).map((t) => t.tag)
+    )
 
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('chatlaris_products', JSON.stringify(updated))
-    }
-
+    setProducts((prev) => [duplicated, ...prev])
     setDuplicateTargetProduct(null)
   }
 
   // Handle Toggle Product Status
-  const handleToggleStatus = (prod: Product) => {
+  const handleToggleStatus = async (prod: Product) => {
+    const businessId = business?.id || 'default'
     const nextStatus: 'active' | 'inactive' = prod.status === 'active' ? 'inactive' : 'active'
+    const targetFull = products.find((p) => p.id === prod.id)
+    if (!targetFull) return
+
+    const rawImages = (targetFull.images || []).map((img, i) => ({
+      id: img.id,
+      storage_path: img.storage_path,
+      file_name: img.file_name,
+      sort_order: i,
+    }))
+
     const updated = products.map((p) => (p.id === prod.id ? { ...p, status: nextStatus } : p))
     setProducts(updated)
 
     if (typeof window !== 'undefined') {
+      localStorage.setItem(`chatlaris_products_${businessId}`, JSON.stringify(updated))
       localStorage.setItem('chatlaris_products', JSON.stringify(updated))
     }
   }
@@ -346,7 +343,7 @@ export default function ProductsPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {filteredProducts.map((prod) => {
-            const productImgs = images[prod.id] || []
+            const productImgs = prod.images || []
             const mainImg = productImgs.find((i) => i.sort_order === 0) || productImgs[0] || null
 
             return (
@@ -371,7 +368,11 @@ export default function ProductsPage() {
         isOpen={!!waModalProduct}
         onClose={() => setWaModalProduct(null)}
         product={waModalProduct}
-        variants={waModalProduct ? variants[waModalProduct.id] || [] : []}
+        variants={
+          waModalProduct
+            ? (products.find((p) => p.id === waModalProduct.id)?.variants as ProductVariant[]) || []
+            : []
+        }
       />
 
       <DeleteModal
