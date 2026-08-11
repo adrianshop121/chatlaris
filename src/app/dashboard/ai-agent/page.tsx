@@ -24,8 +24,20 @@ import {
   ArrowLeft,
 } from 'lucide-react'
 
+import { fetchBusinessProducts, FullProduct } from '@/lib/supabase/products-db'
+
 export default function AIAgentBuilderPage() {
   const { business, subscription } = useAuth()
+
+  const [products, setProducts] = useState<FullProduct[]>([])
+
+  useEffect(() => {
+    async function loadProducts() {
+      const list = await fetchBusinessProducts(business?.id || 'default')
+      setProducts(list)
+    }
+    loadProducts()
+  }, [business?.id])
 
   const [currentStep, setCurrentStep] = useState<number>(1)
 
@@ -427,6 +439,7 @@ export default function AIAgentBuilderPage() {
                 updated_at: '',
               }}
               documents={documents}
+              products={products}
               completedTestCount={completedTestCount}
               setCompletedTestCount={setCompletedTestCount}
               onOpenDeployModal={() => setDeployModalOpen(true)}
