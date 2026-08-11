@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { useAuth } from '@/lib/supabase/auth-context'
 import { ProductForm } from '@/components/products/product-form'
+import { fetchBusinessProducts, updateProductInDb, FullProduct } from '@/lib/supabase/products-db'
 import { Product, ProductImage, ProductVariant } from '@/types/database.types'
 import { Loader2 } from 'lucide-react'
 
@@ -20,83 +21,32 @@ export default function EditProductPage() {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && productId) {
-      const savedProducts = localStorage.getItem('chatlaris_products')
-      const savedImages = localStorage.getItem('chatlaris_product_images')
-      const savedVariants = localStorage.getItem('chatlaris_product_variants')
+    async function loadData() {
+      if (productId) {
+        const businessId = business?.id || 'default'
+        const allProducts = await fetchBusinessProducts(businessId)
+        const target = allProducts.find((p) => p.id === productId)
 
-      if (savedProducts) {
-        try {
-          const list: Product[] = JSON.parse(savedProducts)
-          const target = list.find((p) => p.id === productId)
-          if (target) setProduct(target)
-        } catch (e) {
-          console.warn('Error loading product:', e)
+        if (target) {
+          setProduct(target)
+          setProductImages(target.images || [])
+          setProductVariants(target.variants || [])
         }
+        setIsLoading(false)
       }
-
-      if (savedImages) {
-        try {
-          const imagesMap = JSON.parse(savedImages)
-          if (imagesMap[productId]) setProductImages(imagesMap[productId])
-        } catch (e) {
-          console.warn('Error loading images:', e)
-        }
-      }
-
-      if (savedVariants) {
-        try {
-          const variantsMap = JSON.parse(savedVariants)
-          if (variantsMap[productId]) setProductVariants(variantsMap[productId])
-        } catch (e) {
-          console.warn('Error loading variants:', e)
-        }
-      }
-
-      setIsLoading(false)
     }
-  }, [productId])
+    loadData()
+  }, [productId, business?.id])
 
   const handleSaveProduct = async (data: {
     product: Partial<Product>
-    images: { id?: string; storage_path: string; file_name: string; sort_order: number }[]
+    images: { id?: string; file?: File; storage_path: string; file_name: string; sort_order: number }[]
     variants: any[]
     tags: string[]
   }) => {
-    if (typeof window !== 'undefined' && product) {
-      const savedProducts = localStorage.getItem('chatlaris_products')
-      const productsList: Product[] = savedProducts ? JSON.parse(savedProducts) : []
-
-      const updatedProduct: Product = {
-        ...product,
-        ...data.product,
-        updated_at: new Date().toISOString(),
-      } as Product
-
-      const updatedProducts = productsList.map((p) => (p.id === productId ? updatedProduct : p))
-      localStorage.setItem('chatlaris_products', JSON.stringify(updatedProducts))
-
-      // Update images
-      const savedImages = localStorage.getItem('chatlaris_product_images')
-      const imagesMap = savedImages ? JSON.parse(savedImages) : {}
-      imagesMap[productId] = data.images.map((img, i) => ({
-        id: img.id || 'img_' + Math.random().toString(36).substring(2, 9),
-        product_id: productId,
-        business_id: business?.id || 'default',
-        storage_path: img.storage_path,
-        file_name: img.file_name,
-        sort_order: i,
-        created_at: new Date().toISOString(),
-      }))
-      localStorage.setItem('chatlaris_product_images', JSON.stringify(imagesMap))
-
-      // Update variants
-      const savedVariants = localStorage.getItem('chatlaris_product_variants')
-      const variantsMap = savedVariants ? JSON.parse(savedVariants) : {}
-      variantsMap[productId] = data.variants
-      localStorage.setItem('chatlaris_product_variants', JSON.stringify(variantsMap))
-
-      await new Promise((r) => setTimeout(r, 600))
+    if (product) {
+      const businessId = business?.id || 'default'
+      await updateProductInDb(productId, businessId, data.product, data.images, data.variants, data.tags)
       router.push('/dashboard/products')
     }
   }
